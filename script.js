@@ -11,10 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Khởi tạo các công cụ lắng nghe sự kiện
     initEventListeners();
 
-    // Điền token mặc định nếu trường nhập không có giá trị
-    if (!$('#apify-token').value) {
-        $('#apify-token').value = 'apify_api_bnhOVb47RCCFd1iIRyGxP1qGIQRoiJ11cG15';
-    }
+    // Không điền token mặc định
+    // Để trống để người dùng tự nhập API key của họ
 });
 
 // Khởi tạo các công cụ lắng nghe sự kiện
@@ -37,9 +35,15 @@ async function handleFormSubmit(e) {
     e.preventDefault();
 
     // Lấy các giá trị đầu vào
-    const apifyToken = $('#apify-token').value.trim() || 'apify_api_bnhOVb47RCCFd1iIRyGxP1qGIQRoiJ11cG15';
+    const apifyToken = $('#apify-token').value.trim();
     const postUrl = $('#post-url').value.trim();
     const maxComments = parseInt($('#max-comments').value) || 100;
+
+    // Kiểm tra API token
+    if (!apifyToken) {
+        alert('Vui lòng nhập Token API Apify.');
+        return;
+    }
 
     // Kiểm tra URL
     if (!postUrl) {
