@@ -113,16 +113,21 @@ async function handleFormSubmit(e) {
 
 // Bắt đầu Actor Apify để trích xuất bình luận
 async function startApifyActor(token, url, maxComments) {
-    const response = await fetch('https://api.apify.com/v2/actor-tasks/dD5NkZrLpoT2EU4e8/runs?token=' + token, {
+    // Sử dụng Actor trực tiếp thay vì task
+    const response = await fetch('https://api.apify.com/v2/acts/apify~facebook-comments-scraper/runs?token=' + token, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            startUrls: [{ url }],
-            resultsLimit: maxComments,
-            includeNestedComments: true,
-            viewOption: 'RANKED_UNFILTERED'
+            "startUrls": [{ "url": url }],
+            "commentsMode": "RANKED_THREADED",
+            "maxComments": maxComments,
+            "maxReplies": 999999,
+            "maxNestedReplies": 3,
+            "scrapeCommentImages": true,
+            "scrapeCommenterTimeline": true,
+            "includeNestedReplies": true
         }),
     });
 
