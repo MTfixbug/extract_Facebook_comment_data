@@ -6,6 +6,9 @@ let csvContent = '';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => document.querySelectorAll(selector);
 
+// Sample token for demonstration
+const SAMPLE_TOKEN = 'apify_api_bnhOVb47RCCFd1iIRyGxP1qGIQRoiJ11cG15';
+
 // Khởi tạo các phần tử DOM khi trang được tải
 document.addEventListener('DOMContentLoaded', () => {
     // Khởi tạo các công cụ lắng nghe sự kiện
@@ -22,6 +25,9 @@ function initEventListeners() {
 
     // Xử lý nút chuyển đổi hiển thị token
     $('#toggle-token').addEventListener('click', toggleTokenVisibility);
+
+    // Xử lý nút sử dụng token mẫu
+    $('#use-sample-token').addEventListener('click', useSampleToken);
 
     // Xử lý nút tải xuống CSV
     $('#download-csv-btn').addEventListener('click', downloadCSV);
@@ -69,21 +75,30 @@ async function handleFormSubmit(e) {
         const runData = await startApifyActor(apifyToken, postUrl, maxComments);
         
         if (!runData || !runData.id) {
-            throw new Error('Không thể khởi động Actor Apify.');
+            throw new Error('Không nhận được ID của Actor run từ API.');
         }
 
         const runId = runData.id;
-        addLogEntry(`Actor đã được khởi động. ID: ${runId}`);
+        addLogEntry(`Actor đã được khởi động thành công. ID: ${runId}`);
         updateProgress(30, 'Đang thu thập dữ liệu bình luận...');
 
         // Theo dõi trạng thái của lượt chạy cho đến khi hoàn thành
-        await waitForRunToFinish(apifyToken, runId);
+        const finalStatus = await waitForRunToFinish(apifyToken, runId);
+        
+        if (finalStatus !== 'SUCCEEDED') {
+            throw new Error(`Actor đã kết thúc với trạng thái: ${finalStatus}`);
+        }
         
         addLogEntry('Quá trình thu thập dữ liệu đã hoàn tất.');
         updateProgress(60, 'Đang tải dữ liệu từ Apify...');
 
         // Lấy dữ liệu từ bộ dữ liệu Apify
-        const comments = await fetchDatasetItems(apifyToken, runData.defaultDatasetId);
+        const datasetId = runData.defaultDatasetId;
+        if (!datasetId) {
+            throw new Error('Không tìm thấy ID của dataset.');
+        }
+        
+        const comments = await fetchDatasetItems(apifyToken, datasetId);
         
         if (!comments || comments.length === 0) {
             addLogEntry('Không tìm thấy bình luận nào.');
@@ -117,69 +132,150 @@ async function handleFormSubmit(e) {
 
 // Bắt đầu Actor Apify để trích xuất bình luận
 async function startApifyActor(token, url, maxComments) {
-    // Sử dụng Actor trực tiếp thay vì task
-    const response = await fetch('https://api.apify.com/v2/acts/apify~facebook-comments-scraper/runs?token=' + token, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            "startUrls": [{ "url": url }],
-            "commentsMode": "RANKED_THREADED",
-            "maxComments": maxComments,
-            "maxReplies": 999999,
-            "maxNestedReplies": 3,
-            "scrapeCommentImages": true,
-            "scrapeCommenterTimeline": true,
-            "includeNestedReplies": true
-        }),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Lỗi khi bắt đầu Actor: ${error.message || response.statusText}`);
+    addLogEntry("Đang kết nối tới API Apify...");
+    
+    try {
+        // Sử dụng CORS proxy để tránh lỗi CORS
+        const corsProxy = "https://cors-anywhere.herokuapp.com/";
+        const apiUrl = "https://api.apify.com/v2/acts/apify~facebook-comments-scraper/runs";
+        
+        // Hiển thị thông tin gọi API để debug
+        addLogEntry(`Calling API: ${apiUrl}`);
+        addLogEntry(`URL bài đăng: ${url}`);
+        addLogEntry(`Max comments: ${maxComments}`);
+        
+        // Chuẩn bị dữ liệu gửi đi
+        const payload = {
+            "token": token,
+            "memory": 4096,
+            "timeout": 300,
+            "build": "latest",
+            "webhooks": [],
+            "input": {
+                "startUrls": [{ "url": url }],
+                "commentsMode": "RANKED_THREADED",
+                "maxComments": maxComments,
+                "maxReplies": 999,
+                "maxNestedReplies": 3,
+                "includeNestedReplies": true
+            }
+        };
+        
+        // Gọi API với thêm header để debug
+        const response = await fetch(`${apiUrl}?token=${token}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload.input)
+        });
+        
+        // Debug response
+        addLogEntry(`API Status: ${response.status} ${response.statusText}`);
+        
+        // Nếu response không OK, ném lỗi với thông tin chi tiết
+        if (!response.ok) {
+            let errorText = "";
+            try {
+                const errorData = await response.json();
+                errorText = JSON.stringify(errorData);
+                addLogEntry(`API Error details: ${errorText}`);
+            } catch (e) {
+                errorText = await response.text();
+                addLogEntry(`API Error text: ${errorText}`);
+            }
+            throw new Error(`Lỗi kết nối tới API (${response.status}): ${errorText}`);
+        }
+        
+        // Lấy kết quả
+        const data = await response.json();
+        addLogEntry(`API Call successful: RunID = ${data.data?.id || 'unknown'}`);
+        
+        return data.data;
+    } catch (error) {
+        // Log lỗi chi tiết
+        addLogEntry(`ERROR in API call: ${error.message}`);
+        console.error("Detailed error:", error);
+        throw new Error(`Không thể khởi động Actor Apify: ${error.message}`);
     }
-
-    return response.json();
 }
 
 // Đợi cho lượt chạy hoàn thành
 async function waitForRunToFinish(token, runId) {
     let status = 'PENDING';
+    let retries = 0;
+    const maxRetries = 30; // Giới hạn số lần thử lại
     
-    while (status !== 'SUCCEEDED' && status !== 'FAILED' && status !== 'ABORTED' && status !== 'TIMED_OUT') {
+    addLogEntry(`Bắt đầu theo dõi tiến trình của Actor với runId: ${runId}`);
+    
+    while (status !== 'SUCCEEDED' && status !== 'FAILED' && status !== 'ABORTED' && status !== 'TIMED_OUT' && retries < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, 3000)); // Đợi 3 giây trước khi kiểm tra lại
         
-        const response = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${token}`);
-        if (!response.ok) {
-            throw new Error(`Không thể kiểm tra trạng thái của lượt chạy: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        status = data.status;
-        
-        // Cập nhật nhật ký
-        addLogEntry(`Trạng thái hiện tại: ${status}`);
-        
-        if (status === 'RUNNING') {
-            updateProgress(40, 'Đang thu thập bình luận...');
-        } else if (status === 'SUCCEEDED') {
-            updateProgress(50, 'Thu thập thành công!');
-        } else if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED_OUT') {
-            throw new Error(`Lượt chạy đã ${status}`);
+        try {
+            addLogEntry(`Kiểm tra trạng thái lần ${retries + 1}...`);
+            const apiUrl = `https://api.apify.com/v2/actor-runs/${runId}`;
+            const response = await fetch(`${apiUrl}?token=${token}`);
+            
+            if (!response.ok) {
+                addLogEntry(`Lỗi khi kiểm tra trạng thái: ${response.status} ${response.statusText}`);
+                retries++;
+                continue;
+            }
+            
+            const data = await response.json();
+            status = data.data?.status || 'UNKNOWN';
+            
+            // Cập nhật nhật ký
+            addLogEntry(`Trạng thái hiện tại: ${status}`);
+            
+            if (status === 'RUNNING') {
+                updateProgress(40, 'Đang thu thập bình luận...');
+            } else if (status === 'SUCCEEDED') {
+                updateProgress(50, 'Thu thập thành công!');
+            } else if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED_OUT') {
+                throw new Error(`Actor đã ${status}`);
+            }
+            
+            retries++;
+        } catch (error) {
+            addLogEntry(`Lỗi kiểm tra trạng thái: ${error.message}`);
+            retries++;
         }
     }
+    
+    if (retries >= maxRetries && status !== 'SUCCEEDED') {
+        throw new Error(`Đã vượt quá số lần thử lại (${maxRetries}) khi chờ Actor hoàn thành.`);
+    }
+    
+    return status;
 }
 
 // Lấy các mục từ bộ dữ liệu
 async function fetchDatasetItems(token, datasetId) {
-    const response = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}`);
-    
-    if (!response.ok) {
-        throw new Error(`Không thể lấy dữ liệu: ${response.statusText}`);
+    addLogEntry(`Đang tải dữ liệu từ dataset: ${datasetId}`);
+    try {
+        const apiUrl = `https://api.apify.com/v2/datasets/${datasetId}/items`;
+        const response = await fetch(`${apiUrl}?token=${token}`);
+        
+        if (!response.ok) {
+            let errorText = "";
+            try {
+                const errorData = await response.json();
+                errorText = JSON.stringify(errorData);
+            } catch (e) {
+                errorText = await response.text();
+            }
+            addLogEntry(`Lỗi khi tải dữ liệu: ${response.status} - ${errorText}`);
+            throw new Error(`Không thể lấy dữ liệu: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        addLogEntry(`Đã tải thành công dữ liệu từ dataset.`);
+        return data.data || [];
+    } catch (error) {
+        addLogEntry(`Lỗi khi xử lý dataset: ${error.message}`);
+        throw error;
     }
-    
-    return response.json();
 }
 
 // Xử lý các bình luận Facebook
@@ -371,6 +467,17 @@ function resetForm() {
 
 // Thêm mục nhật ký
 function addLogEntry(message) {
+    // Khởi tạo container nếu chưa hiển thị
+    if ($('#log-container').innerHTML === '') {
+        // Đảm bảo status card hiển thị
+        if ($('#status-card').classList.contains('hidden')) {
+            // Chỉ hiển thị status card nếu đang ẩn
+            $('#scraper-form').parentElement.classList.add('hidden');
+            $('#status-card').classList.remove('hidden');
+            $('#results-card').classList.add('hidden');
+        }
+    }
+    
     const logEntry = document.createElement('p');
     
     const timestamp = new Date().toLocaleTimeString();
@@ -380,6 +487,9 @@ function addLogEntry(message) {
     
     // Cuộn xuống cuối danh sách nhật ký
     $('#log-container').scrollTop = $('#log-container').scrollHeight;
+    
+    // Log ra console cho debugging
+    console.log(`[${timestamp}] ${message}`);
 }
 
 // Cập nhật thanh tiến trình
@@ -402,4 +512,10 @@ function csvEscape(value) {
     }
     
     return str;
+}
+
+// Xử lý khi người dùng nhấp vào nút "Sử dụng Token mẫu"
+function useSampleToken() {
+    $('#apify-token').value = SAMPLE_TOKEN;
+    addLogEntry("Đã sử dụng token mẫu. Lưu ý: Token này có thể có giới hạn truy cập.");
 } 
