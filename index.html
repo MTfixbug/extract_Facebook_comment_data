@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facebook Comment Extractor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(90deg, #4f46e5 0%, #3b82f6 100%);
+        }
+        .backdrop {
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body class="font-sans bg-gray-50 text-gray-900">
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fas fa-comments text-2xl"></i>
+                <h1 class="text-2xl font-bold">Facebook Comment Extractor</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="https://github.com/MTfixbug/extract_Facebook_comment_data" target="_blank" class="hover:text-blue-100 transition-colors">
+                    <i class="fab fa-github text-2xl"></i>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="container mx-auto px-4 py-8 max-w-5xl">
+        <!-- Introduction Card -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-bold mb-3 flex items-center">
+                <i class="fas fa-info-circle text-primary-600 mr-2"></i>
+                Giới thiệu
+            </h2>
+            <p class="text-gray-700 mb-4">
+                Công cụ này giúp bạn trích xuất bình luận từ các bài đăng công khai trên Facebook. Chỉ cần nhập URL bài đăng, token API Apify và số lượng bình luận cần lấy (tối đa), chúng tôi sẽ thu thập dữ liệu và cung cấp cho bạn dưới dạng file CSV.
+            </p>
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-4 text-blue-700">
+                <div class="flex items-start">
+                    <i class="fas fa-exclamation-circle mt-1 mr-2"></i>
+                    <div>
+                        <p class="font-bold">Lưu ý:</p>
+                        <p>Token API của bạn sẽ không được lưu trữ hoặc chia sẻ với bất kỳ ai. Tất cả các yêu cầu được xử lý trực tiếp từ trình duyệt của bạn đến Apify.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Form Card -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-bold mb-5 flex items-center">
+                <i class="fas fa-search text-primary-600 mr-2"></i>
+                Trích xuất bình luận
+            </h2>
+            <form id="scraper-form" class="space-y-6">
+                <div>
+                    <label for="apify-token" class="block text-sm font-medium text-gray-700 mb-1">Token API Apify <span class="text-red-500">*</span></label>
+                    <div class="relative">
+                        <input type="password" id="apify-token" name="apify-token" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500" 
+                               placeholder="Nhập token API Apify của bạn" required>
+                        <button type="button" id="toggle-token" class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700">
+                            <i class="far fa-eye"></i>
+                        </button>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">Token mặc định: apify_api_bnhOVb47RCCFd1iIRyGxP1qGIQRoiJ11cG15</p>
+                </div>
+
+                <div>
+                    <label for="post-url" class="block text-sm font-medium text-gray-700 mb-1">URL bài đăng Facebook <span class="text-red-500">*</span></label>
+                    <input type="url" id="post-url" name="post-url" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500" 
+                           placeholder="https://www.facebook.com/username/posts/123456789" required>
+                </div>
+
+                <div>
+                    <label for="max-comments" class="block text-sm font-medium text-gray-700 mb-1">Số lượng bình luận tối đa</label>
+                    <input type="number" id="max-comments" name="max-comments" min="1" value="100" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" class="w-full gradient-bg text-white py-3 px-6 rounded-lg font-medium hover:opacity-90 transition-opacity flex items-center justify-center" id="submit-btn">
+                        <i class="fas fa-play mr-2"></i> Bắt đầu trích xuất
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Processing Status Card -->
+        <div id="status-card" class="bg-white rounded-lg shadow-md p-6 mb-8 hidden">
+            <h2 class="text-xl font-bold mb-4 flex items-center">
+                <i class="fas fa-spinner fa-spin text-primary-600 mr-2"></i>
+                Đang xử lý
+            </h2>
+
+            <div class="mb-5">
+                <div class="flex justify-between mb-1">
+                    <span class="text-sm font-medium text-gray-700" id="progress-text">Đang khởi tạo...</span>
+                    <span class="text-sm font-medium text-primary-600" id="progress-percentage">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="bg-primary-600 h-2 rounded-full" id="progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="font-medium text-gray-800 mb-2">Nhật ký xử lý:</h3>
+                <div id="log-container" class="text-sm text-gray-600 space-y-1 max-h-40 overflow-y-auto">
+                    <!-- Log entries will be added here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Card -->
+        <div id="results-card" class="bg-white rounded-lg shadow-md p-6 mb-8 hidden">
+            <h2 class="text-xl font-bold mb-4 flex items-center">
+                <i class="fas fa-check-circle text-green-600 mr-2"></i>
+                Kết quả
+            </h2>
+
+            <div class="space-y-4">
+                <div class="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <p class="text-green-800"><i class="fas fa-check mr-2"></i> <span id="result-summary">Đã trích xuất thành công 0 bình luận.</span></p>
+                </div>
+
+                <div class="border rounded-lg overflow-hidden">
+                    <div class="p-4 bg-gray-50 border-b">
+                        <h3 class="font-medium text-gray-800">Xem trước dữ liệu</h3>
+                    </div>
+                    <div class="p-0 overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Người bình luận</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nội dung bình luận</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thời gian</th>
+                                </tr>
+                            </thead>
+                            <tbody id="preview-table-body" class="bg-white divide-y divide-gray-200">
+                                <!-- Preview data will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row justify-center space-y-3 sm:space-y-0 sm:space-x-4">
+                    <button id="download-csv-btn" class="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors flex items-center justify-center">
+                        <i class="fas fa-download mr-2"></i> Tải xuống CSV
+                    </button>
+                    <button id="new-extraction-btn" class="px-6 py-3 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition-colors flex items-center justify-center">
+                        <i class="fas fa-redo mr-2"></i> Trích xuất mới
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8 mt-12">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <h3 class="text-lg font-bold">Facebook Comment Extractor</h3>
+                    <p class="text-gray-400 text-sm">Công cụ trích xuất bình luận Facebook</p>
+                </div>
+                <div class="flex space-x-4 text-gray-400">
+                    <a href="https://github.com/MTfixbug/extract_Facebook_comment_data" class="hover:text-white transition-colors" target="_blank">
+                        <i class="fab fa-github text-xl"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="mt-8 pt-6 border-t border-gray-700 text-sm text-gray-400 text-center">
+                <p>&copy; 2023 Facebook Comment Extractor. Phát triển bởi ForLeChi.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html> 
